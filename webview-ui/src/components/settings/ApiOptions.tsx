@@ -32,8 +32,10 @@ import {
 	openAiNativeModels,
 	openRouterDefaultModelId,
 	openRouterDefaultModelInfo,
-	qwenDefaultModelId,
-	qwenModels,
+	mainlandQwenModels,
+	internationalQwenModels,
+	mainlandQwenDefaultModelId,
+	internationalQwenDefaultModelId,
 	vertexDefaultModelId,
 	vertexModels,
 	askSageModels,
@@ -41,6 +43,8 @@ import {
 	askSageDefaultURL,
 	xaiDefaultModelId,
 	xaiModels,
+	sambanovaModels,
+	sambanovaDefaultModelId,
 } from "../../../../src/shared/api"
 import { ExtensionMessage } from "../../../../src/shared/ExtensionMessage"
 import { useExtensionState } from "../../context/ExtensionStateContext"
@@ -48,6 +52,7 @@ import { vscode } from "../../utils/vscode"
 import { getAsVar, VSC_DESCRIPTION_FOREGROUND } from "../../utils/vscStyles"
 import VSCodeButtonLink from "../common/VSCodeButtonLink"
 import OpenRouterModelPicker, { ModelDescriptionMarkdown } from "./OpenRouterModelPicker"
+import AccountView, { ClineAccountView } from "../account/AccountView"
 
 interface ApiOptionsProps {
 	showModelOptions: boolean
@@ -87,6 +92,7 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 	const [vsCodeLmModels, setVsCodeLmModels] = useState<vscodemodels.LanguageModelChatSelector[]>([])
 	const [anthropicBaseUrlSelected, setAnthropicBaseUrlSelected] = useState(!!apiConfiguration?.anthropicBaseUrl)
 	const [azureApiVersionSelected, setAzureApiVersionSelected] = useState(!!apiConfiguration?.azureApiVersion)
+	const [awsEndpointSelected, setAwsEndpointSelected] = useState(!!apiConfiguration?.awsBedrockEndpoint)
 	const [modelConfigurationSelected, setModelConfigurationSelected] = useState(false)
 	const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 
@@ -191,6 +197,12 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 					
 				</VSCodeDropdown>
 			</DropdownContainer>
+
+			{selectedProvider === "cline" && (
+				<div style={{ marginBottom: 8, marginTop: 4 }}>
+					<ClineAccountView />
+				</div>
+			)}
 
 			{selectedProvider === "asksage" && (
 				<div>
@@ -556,7 +568,33 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 							{/* <VSCodeOption value="us-gov-east-1">us-gov-east-1</VSCodeOption> */}
 						</VSCodeDropdown>
 					</DropdownContainer>
+
 					<div style={{ display: "flex", flexDirection: "column" }}>
+						<VSCodeCheckbox
+							checked={awsEndpointSelected}
+							onChange={(e: any) => {
+								const isChecked = e.target.checked === true
+								setAwsEndpointSelected(isChecked)
+								if (!isChecked) {
+									setApiConfiguration({
+										...apiConfiguration,
+										awsBedrockEndpoint: "",
+									})
+								}
+							}}>
+							Use custom VPC endpoint
+						</VSCodeCheckbox>
+
+						{awsEndpointSelected && (
+							<VSCodeTextField
+								value={apiConfiguration?.awsBedrockEndpoint || ""}
+								style={{ width: "100%", marginTop: 3, marginBottom: 5 }}
+								type="url"
+								onInput={handleInputChange("awsBedrockEndpoint")}
+								placeholder="Enter VPC Endpoint URL (optional)"
+							/>
+						)}
+
 						<VSCodeCheckbox
 							checked={apiConfiguration?.awsUseCrossRegionInference || false}
 							onChange={(e: any) => {
@@ -776,6 +814,21 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 								}}>
 								Supports Images
 							</VSCodeCheckbox>
+							<VSCodeCheckbox
+								checked={!!apiConfiguration?.openAiModelInfo?.supportsComputerUse}
+								onChange={(e: any) => {
+									const isChecked = e.target.checked === true
+									let modelInfo = apiConfiguration?.openAiModelInfo
+										? apiConfiguration.openAiModelInfo
+										: { ...openAiModelInfoSaneDefaults }
+									modelInfo = { ...modelInfo, supportsComputerUse: isChecked }
+									setApiConfiguration({
+										...apiConfiguration,
+										openAiModelInfo: modelInfo,
+									})
+								}}>
+								Supports Computer Use
+							</VSCodeCheckbox>
 							<div style={{ display: "flex", gap: 10, marginTop: "5px" }}>
 								<VSCodeTextField
 									value={
@@ -854,6 +907,38 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 										})
 									}}>
 									<span style={{ fontWeight: 500 }}>Output Price / 1M tokens</span>
+								</VSCodeTextField>
+							</div>
+							<div style={{ display: "flex", gap: 10, marginTop: "5px" }}>
+								<VSCodeTextField
+									value={
+										apiConfiguration?.openAiModelInfo?.temperature
+											? apiConfiguration.openAiModelInfo.temperature.toString()
+											: openAiModelInfoSaneDefaults.temperature?.toString()
+									}
+									onInput={(input: any) => {
+										let modelInfo = apiConfiguration?.openAiModelInfo
+											? apiConfiguration.openAiModelInfo
+											: { ...openAiModelInfoSaneDefaults }
+
+										// Check if the input ends with a decimal point or has trailing zeros after decimal
+										const value = input.target.value
+										const shouldPreserveFormat =
+											value.endsWith(".") || (value.includes(".") && value.endsWith("0"))
+
+										modelInfo.temperature =
+											value === ""
+												? openAiModelInfoSaneDefaults.temperature
+												: shouldPreserveFormat
+													? value // Keep as string to preserve decimal format
+													: parseFloat(value)
+
+										setApiConfiguration({
+											...apiConfiguration,
+											openAiModelInfo: modelInfo,
+										})
+									}}>
+									<span style={{ fontWeight: 500 }}>Temperature</span>
 								</VSCodeTextField>
 							</div>
 						</>
@@ -1218,6 +1303,37 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 				</div>
 			)}
 
+			{selectedProvider === "sambanova" && (
+				<div>
+					<VSCodeTextField
+						value={apiConfiguration?.sambanovaApiKey || ""}
+						style={{ width: "100%" }}
+						type="password"
+						onInput={handleInputChange("sambanovaApiKey")}
+						placeholder="Enter API Key...">
+						<span style={{ fontWeight: 500 }}>SambaNova API Key</span>
+					</VSCodeTextField>
+					<p
+						style={{
+							fontSize: "12px",
+							marginTop: 3,
+							color: "var(--vscode-descriptionForeground)",
+						}}>
+						This key is stored locally and only used to make API requests from this extension.
+						{!apiConfiguration?.sambanovaApiKey && (
+							<VSCodeLink
+								href="https://docs.sambanova.ai/cloud/docs/get-started/overview"
+								style={{
+									display: "inline",
+									fontSize: "inherit",
+								}}>
+								You can get a SambaNova API key by signing up here.
+							</VSCodeLink>
+						)}
+					</p>
+				</div>
+			)}
+
 			{apiErrorMessage && (
 				<p
 					style={{
@@ -1230,6 +1346,7 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 			)}
 
 			{selectedProvider !== "openrouter" &&
+				selectedProvider !== "cline" &&
 				selectedProvider !== "openai" &&
 				selectedProvider !== "ollama" &&
 				selectedProvider !== "lmstudio" &&
@@ -1248,10 +1365,14 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 							{selectedProvider === "gemini" && createDropdown(geminiModels)}
 							{selectedProvider === "openai-native" && createDropdown(openAiNativeModels)}
 							{selectedProvider === "deepseek" && createDropdown(deepSeekModels)}
-							{selectedProvider === "qwen" && createDropdown(qwenModels)}
+							{selectedProvider === "qwen" &&
+								createDropdown(
+									apiConfiguration?.qwenApiLine === "china" ? mainlandQwenModels : internationalQwenModels,
+								)}
 							{selectedProvider === "mistral" && createDropdown(mistralModels)}
 							{selectedProvider === "asksage" && createDropdown(askSageModels)}
 							{selectedProvider === "xai" && createDropdown(xaiModels)}
+							{selectedProvider === "sambanova" && createDropdown(sambanovaModels)}
 						</DropdownContainer>
 
 						{((selectedProvider === "anthropic" && selectedModelId === "claude-3-7-sonnet-20250219") ||
@@ -1270,7 +1391,9 @@ const ApiOptions = ({ showModelOptions, apiErrorMessage, modelIdErrorMessage, is
 					</>
 				)}
 
-			{selectedProvider === "openrouter" && showModelOptions && <OpenRouterModelPicker isPopup={isPopup} />}
+			{(selectedProvider === "openrouter" || selectedProvider === "cline") && showModelOptions && (
+				<OpenRouterModelPicker isPopup={isPopup} />
+			)}
 
 			{modelIdErrorMessage && (
 				<p
@@ -1465,7 +1588,10 @@ export function normalizeApiConfiguration(apiConfiguration?: ApiConfiguration): 
 		case "deepseek":
 			return getProviderData(deepSeekModels, deepSeekDefaultModelId)
 		case "qwen":
-			return getProviderData(qwenModels, qwenDefaultModelId)
+			const qwenModels = apiConfiguration?.qwenApiLine === "china" ? mainlandQwenModels : internationalQwenModels
+			const qwenDefaultId =
+				apiConfiguration?.qwenApiLine === "china" ? mainlandQwenDefaultModelId : internationalQwenDefaultModelId
+			return getProviderData(qwenModels, qwenDefaultId)
 		case "mistral":
 			return getProviderData(mistralModels, mistralDefaultModelId)
 		case "asksage":
@@ -1476,11 +1602,17 @@ export function normalizeApiConfiguration(apiConfiguration?: ApiConfiguration): 
 				selectedModelId: apiConfiguration?.openRouterModelId || openRouterDefaultModelId,
 				selectedModelInfo: apiConfiguration?.openRouterModelInfo || openRouterDefaultModelInfo,
 			}
+		case "cline":
+			return {
+				selectedProvider: provider,
+				selectedModelId: apiConfiguration?.openRouterModelId || openRouterDefaultModelId,
+				selectedModelInfo: apiConfiguration?.openRouterModelInfo || openRouterDefaultModelInfo,
+			}
 		case "openai":
 			return {
 				selectedProvider: provider,
 				selectedModelId: apiConfiguration?.openAiModelId || "",
-				selectedModelInfo: openAiModelInfoSaneDefaults,
+				selectedModelInfo: apiConfiguration?.openAiModelInfo || openAiModelInfoSaneDefaults,
 			}
 		case "ollama":
 			return {
@@ -1513,6 +1645,8 @@ export function normalizeApiConfiguration(apiConfiguration?: ApiConfiguration): 
 			}
 		case "xai":
 			return getProviderData(xaiModels, xaiDefaultModelId)
+		case "sambanova":
+			return getProviderData(sambanovaModels, sambanovaDefaultModelId)
 		default:
 			return getProviderData(anthropicModels, anthropicDefaultModelId)
 	}
