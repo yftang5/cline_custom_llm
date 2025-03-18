@@ -11,9 +11,16 @@ export class LiteLlmHandler implements ApiHandler {
 
 	constructor(options: ApiHandlerOptions) {
 		this.options = options
+		const username = this.options.liteLlmUsername
+		const password = this.options.liteLlmPassword
+		const auth =Buffer.from(`${username}:${password}`).toString("base64")
 		this.client = new OpenAI({
 			baseURL: this.options.liteLlmBaseUrl || "http://localhost:4000",
-			apiKey: this.options.liteLlmApiKey || "noop",
+			apiKey: "",
+			defaultHeaders : {
+				"Content-Type": "application/json",
+				"Authorization": `Basic ${auth}`
+			}
 		})
 	}
 
